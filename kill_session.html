@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>test api</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/bs4/jq-3.3.1/dt-1.10.20/r-2.2.3/sl-1.3.1/datatables.min.css"/>
+    <script type="text/javascript" src="https://cdn.datatables.net/v/bs4/jq-3.3.1/dt-1.10.20/r-2.2.3/sl-1.3.1/datatables.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+
+</head>
+<body>
+    <div class="col-md-12">
+        <input id="address" placeholder="address api" value="" autocomplete="on">
+        <input id="login" placeholder="login api" value="" autocomplete="on">
+        <input id="pass" placeholder="pass" value="" autocomplete="on">
+        <button id="but_token" class="button">Identification</button>
+        <input id="inputtoken" name="inputtoken" placeholder="token" value="">
+        <button id="but_table" class="button">send token</button>
+    </div>
+    <br>
+    <span id="data_api_btn"><strong>List Users</strong></span>
+    <table id="data_api" class="table display table-hover" style="width:100%">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Lastname</th>
+                <th>UUID</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+    </table>
+    <br>
+    <span id="data_api_tenants_btn"><strong>TENANTS</strong></span>
+    <table id="data_api_tenants" class="table display table-hover" style="width:100%">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>UUID</th>
+        </tr>
+        </thead>
+    </table>
+    <br>
+    <span id="data_api_session_btn"><strong>SESSIONS</strong></span>
+    <table id="data_api_session" class="table display table-hover" style="width:100%">
+        <thead>
+        <tr>
+            <th>Mobile</th>
+            <th>UUID</th>
+            <th>User</th>
+            <th>Tenant</th>
+            <th>Action</th>
+        </tr>
+        </thead>
+    </table>
+</body>
+<script>
+    $(document).ready(function() {
+        var token = sessionStorage.getItem('token');
+        if (token != null){
+            $("#inputtoken").val(token);
+            //console.log($('#data_api').DataTable().data().length);
+            if ($('#data_api').DataTable().data().length >= 1) {
+                $("#but_table").on('click', function (e) {
+                    e.preventDefault();
+                    $('#data_api').ajax.reload();
+                });
+            }else{tableLoad();}
+        }
+
+
+
+        $("#but_token").on('click', function (e) {
+            e.preventDefault();
+            var data = {
+                "backend": "wazo_user"
+            };
+            $.ajax({
+                type: "POST",
+                url: $("#address").val()+"/api/auth/0.1/token",
+                beforeSend: function(xhr){
+                    xhr.setRequestHeader("Authorization", "Basic " + btoa($("#login").val() + ":" + $("#pass").val()));
+                },
+                dataType: "json",
+                contentType: 'application/json',
+                data: "{\"backend\": \"wazo_user\"}",
+                success: function (e) {
+                    console.log(e);
+                    var token = e.data.token;
+                    if (e.message == "Unauthorized"){
+                        $("#inputtoken").val(e.details);
+                    }else {
+                        $("#inputtoken").val(e.data.token);
+                        sessionStorage.setItem('token', token);
+                        tableLoad();
+                    }
+
+                }
+            })
+        });
+
+
+
+
+        function tableLoad() {
+            var token = sessionStorage.getItem('token');
+            var userLoad = $('#data_api').DataTable({
+                dom: "Bfrtip",
+                paging: true,
+                destroy: true,
+                ajax: {
+                    type: "GET",
+                    url: $("#address").val()+"/api/auth/0.1/users",
+                    headers: {"X-Auth-Token": token},
+                    dataSrc: "items",
+                    error: function (e) {
+                        console.log(e.responseJSON);
+                        if (e.responseJSON.message == "Unauthorized"){
+                            $("#inputtoken").val(e.responseJSON.message);
+                        }
+                    },
+                },
+                columns:[{
+                    data:"firstname"
+                },{
+                    data:"lastname"
+                },{
+                    data:"uuid"
+                },{
+                    data:"emails.[].address"
+                }]
+            });
+            $("#but_table").on('click', function (e) {
+                e.preventDefault();
+                userLoad.ajax.reload();
+            });
+            $('#data_api tbody').on( 'click', 'tr', function (e) {
+                console.log( userLoad.row( this ).data());
+                var data = userLoad.row( this ).data();
+                console.log(data.tenant_uuid);
+                tenantLoad(data.tenant_uuid, data.uuid);
+            });
+            $("#data_api_btn").on('click', function () {
+                userLoad.ajax.reload();
+            })
+        }
+
+
+
+        function tenantLoad(tenant, user_uuid) {
+            sessionStorage.setItem('user_id', user_uuid);
+            var token = sessionStorage.getItem('token');
+            var tenantTable = $('#data_api_tenants').DataTable({
+                dom: "Bfrtip",
+                paging: true,
+                retrieve: true,
+                //destroy: true,
+                ajax: {
+                    type: "GET",
+                    url: $("#address").val()+"/api/auth/0.1/tenants",
+                    headers: {"X-Auth-Token": token, "Wazo-Tenant": tenant},
+                    dataSrc: "items",
+                },
+                columns:[{
+                    data:"name"
+                },{
+                    data:"uuid"
+                }],
+                select: true
+            });
+
+            $('#data_api_tenants tbody').on( 'click', 'tr', function (e) {
+
+                var user_id = sessionStorage.getItem('user_id');
+                console.log(tenantTable.row( this ).data().uuid+","+ user_id);
+                sessionLoad(tenantTable.row( this ).data().uuid, user_id);
+            });
+            $("#data_api_tenants_btn").on('click', function () {
+                tenantTable.ajax.reload();
+            })
+        }
+
+
+
+        function sessionLoad(tenant, user_uuid) {
+            //sessionStorage.removeItem('user_id');
+            var token = sessionStorage.getItem('token');
+           var sessionTable =  $('#data_api_session').DataTable({
+                dom: "Bfrtip",
+                destroy: true,
+                //paging: true,
+                //retrieve: true,
+                //processing: true,
+                //serverSide: true,
+                ajax: {
+                    type: "GET",
+                    cache: false,
+                    url: $("#address").val()+"/api/auth/0.1/users/"+user_uuid+"/sessions",
+                    headers: {"X-Auth-Token": token, "Wazo-Tenant": tenant},
+                    dataSrc: "items",
+                },
+                columns:[{
+                    data:"mobile"
+                },{
+                    data:"uuid"
+                },{
+                    data:"user_uuid"
+                },{
+                    data:"tenant_uuid"
+                },{
+                    data:""
+                }],
+                columnDefs: [ {
+                    "targets": -1,
+                    "data": null,
+                    "defaultContent": "<button>Suppr!</button>"
+                }],
+                select: true
+           });
+            console.log(sessionTable.row());
+           $('#data_api_session tbody').on( 'click', 'button', function (e) {
+               console.log( sessionTable.row( $(this) ).data() );
+               $.ajax({
+                   type: "DELETE",
+                   url: $("#address").val() + "/api/auth/0.1/sessions/" + sessionTable.row($(this).parents('tr')).data().uuid,
+                   headers: {"X-Auth-Token": token},
+                   success: function (e) {
+                       console.log(e);
+                       sessionTable.ajax.reload();
+                   }
+               })
+           });
+
+           $("#data_api_session_btn").on('click', function () {
+               sessionTable.ajax.reload();
+           })
+        }
+    } );
+</script>
+</html>
